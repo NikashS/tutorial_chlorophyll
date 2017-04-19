@@ -8,6 +8,7 @@ import math
 from scipy import stats
 from scipy.optimize import curve_fit
 from scipy.optimize import leastsq
+from scipy.signal import correlate
 #from scipy import optimize
 import json
 
@@ -99,6 +100,8 @@ def getDataFromRange(latOne, latTwo, lonOne, lonTwo, chloroFiles, tempFiles, lon
 
 	return (actualAllChloro, actualAllTemp, timeseries)
 
+plt.style.use('ggplot')
+
 
 """#Actual Program Run
 (chloroFiles, tempFiles, lons, lats) = getAllFiles()
@@ -123,6 +126,8 @@ timeseries1 = np.array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
 # 	json.dump(allTempList1, f)
 # with open('time.txt', 'w') as f:
 # 	json.dump(timeseries1, f)
+
+
 
 
 #Coast of Argentina
@@ -156,7 +161,7 @@ plt.suptitle("Sea Surface Temperature Monthly Over the Course of 12 Years")
 plt.figure()"""
 
 regression1 = np.polyfit(allTempList1, allChloroList1, deg=1)
-plt.plot(allTempList1, regression1[0]*allTempList1+regression1[1])
+plt.plot(allTempList1, regression1[0]*allTempList1+regression1[1], linewidth='5')
 
 plt.scatter(allTempList1, allChloroList1, color='c')
 plt.xlabel("Sea Surface Temperature (Degrees Celcius)")
@@ -167,7 +172,7 @@ plt.figure()
 
 residualsArray1 = []
 for i in range(len(allTempList1)):
-	if i==200:
+	if i==100:
 		break
 	actualValue = allChloroList1[i]
 	predictedValue = regression1[0]*allTempList1[i]+regression1[1]
@@ -177,7 +182,7 @@ for i in range(len(allTempList1)):
 timeseriesArray = []
 timeseries1A = timeseries1.tolist()
 for i in range(len(timeseries1A)):
-	if i==200:
+	if i==100:
 		break
 	timeseriesArray.append(timeseries1A[i])
 
@@ -196,20 +201,48 @@ countCrosses = 0
 firstvalue = residuals1[0]
 mean = np.mean(residuals1)
 for value in range(1, len(residuals1)):
-	if firstvalue<mean and residuals1[value]>mean:
-		countCrosses+=1
-	firstvalue = residuals1[value]
+    if firstvalue<mean and residuals1[value]>mean:
+        countCrosses+=1
+    firstvalue = residuals1[value]
 print (countCrosses)
-
-
 guess_freq = 2*np.pi*((countCrosses)/len(residuals1))
 guess_amplitude = 3*np.std(residuals1)/(2**0.5)
 guess_phase = 0
 guess_offset = np.mean(residuals1)
 p0=[guess_freq, guess_amplitude, guess_phase, guess_offset]
-
 def my_sin(x, freq, amplitude, phase, offset):
     return np.sin(freq * x + phase) * amplitude + offset
+#data_first_guess = my_sin(timeseries1, *p0)
+fit = curve_fit(my_sin, timeseries1, residuals1, p0=p0)
+data_fit = my_sin(timeseries1, *fit[0])
+print (fit[0], p0)
+
+#start comment here
+n=len(residuals1)
+result = correlate(residuals1[-(n-100):], residuals1[n-100:], mode='full')
+
+period = 0
+firstvalue = result[0]
+mean = np.mean(result)
+firstplace = -1
+for value in range(1, len(result)):
+	if firstvalue<mean and result[value]>mean:
+		if firstplace == -1:
+			firstplace = value
+		else:
+			period = value - firstplace
+			break
+	firstvalue = result[value]
+print ("period:" + str(period))
+
+frequency = 1/(period)
+guess_amplitude = 3*np.std(residuals1)/(2**0.5)
+guess_phase = 0
+guess_offset = np.mean(residuals1)
+p0=[guess_amplitude, guess_phase, guess_offset]
+
+def my_sin(x, amplitude, phase, offset):
+    return np.sin(frequency * x + phase) * amplitude + offset
 
 #data_first_guess = my_sin(timeseries1, *p0)
 
@@ -218,13 +251,23 @@ data_fit = my_sin(timeseries1, *fit[0])
 
 print (fit[0], p0)
 
-plt.plot(data_fit)
-plt.plot(timeseries1, residuals1)
-plt.xlabel("Time (Months, Only 156 For Sake of Visualization)")
+line_up, = plt.plot(data_fit, color = 'blue', label='Regression', linewidth='2')
+line_down, = plt.plot(timeseries1, residuals1, label='Actual Residuals', linewidth='2')
+plt.legend(handles=[line_up, line_down])
+#plt.plot(result, color='red')
+plt.xlabel("Time (Months, Only 100 For Sake of Visualization)")
 plt.ylabel("Residual Values (mg/m^3)")
 plt.suptitle("Residual Time Series of Scatter Plot")
+plt.figure()
 
+allPoints1 = []
+for value in allTempList1:
+	point = my_sin(value, *fit[0])
+	point += regression1[0]*value + regression1[1]
+	allPoints1.append(point)
 
+plt.scatter(allTempList1, allChloroList1)
+plt.scatter(allTempList1, allPoints1, color='r')
 
 """plt.scatter(allChloroList2, allTempList2, color='c')
 plt.xlabel("Chlorophyll Levels (mg/m^3)")
